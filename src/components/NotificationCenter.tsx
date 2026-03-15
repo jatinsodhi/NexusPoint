@@ -1,27 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Bell, 
-  X, 
   CheckCircle2, 
   Clock, 
-  AlertCircle,
-  MessageSquare,
+  MessageSquare, 
   UserPlus
 } from 'lucide-react';
-import { db, auth } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  orderBy, 
-  updateDoc, 
-  doc,
-  writeBatch
-} from 'firebase/firestore';
+import { auth } from '../firebase';
 import { Notification } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../services/api';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,27 +20,26 @@ export default function NotificationCenter() {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const fetchNotifications = async () => {
+      try {
+        const notifs = await api.getNotifications(auth.currentUser!.uid);
+        setNotifications(notifs);
+        setUnreadCount(notifs.filter(n => !n.read).length);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[];
-      setNotifications(notifs);
-      setUnreadCount(notifs.filter(n => !n.read).length);
-    });
-
-    return () => unsubscribe();
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const markAsRead = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'notifications', id), { read: true });
+      await api.updateNotification(id, { read: true });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
@@ -59,14 +47,14 @@ export default function NotificationCenter() {
 
   const markAllAsRead = async () => {
     if (notifications.length === 0) return;
-    const batch = writeBatch(db);
-    notifications.forEach(n => {
-      if (!n.read) {
-        batch.update(doc(db, 'notifications', n.id), { read: true });
-      }
-    });
     try {
-      await batch.commit();
+      // In a real app, we'd have a bulk update endpoint
+      // For now, we'll just update the ones that are unread
+      const unreadNotifs = notifications.filter(n => !n.read);
+      await Promise.all(unreadNotifs.map(n => api.updateNotification(n.id, { read: true })));
+      
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
     } catch (error) {
       console.error("Error marking all as read:", error);
     }

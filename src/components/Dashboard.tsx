@@ -1,22 +1,17 @@
 import { useState, useEffect } from 'react';
 import { UserProfile, Team, Project } from '../types';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { 
   LayoutDashboard, 
   Kanban, 
   MessageSquare, 
   Users, 
-  Settings, 
   LogOut, 
-  Plus,
   Search,
-  Bell,
   ChevronRight,
   Sun,
-  Moon,
-  Sparkles
+  Moon
 } from 'lucide-react';
 import KanbanBoard from './KanbanBoard';
 import Chat from './Chat';
@@ -25,6 +20,7 @@ import TeamOverview from './TeamOverview';
 import AIAssistant from './AIAssistant';
 import NotificationCenter from './NotificationCenter';
 import { useTheme } from '../contexts/ThemeContext';
+import { api } from '../services/api';
 
 interface DashboardProps {
   user: any;
@@ -40,23 +36,21 @@ export default function Dashboard({ user, profile, team }: DashboardProps) {
   const { theme: currentTheme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'projects'),
-      where('teamId', '==', team.id),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-      setProjects(projectsData);
-      if (projectsData.length > 0 && !selectedProject) {
-        setSelectedProject(projectsData[0]);
+    const fetchProjects = async () => {
+      try {
+        const projectsData = await api.getProjects(team.id);
+        setProjects(projectsData);
+        if (projectsData.length > 0 && !selectedProject) {
+          setSelectedProject(projectsData[0]);
+        }
+      } catch (error) {
+        console.error("Error fetching projects:", error);
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'projects');
-    });
+    };
 
-    return () => unsubscribe();
+    fetchProjects();
+    const interval = setInterval(fetchProjects, 10000);
+    return () => clearInterval(interval);
   }, [team.id]);
 
   const sidebarItems = [
@@ -201,3 +195,4 @@ export default function Dashboard({ user, profile, team }: DashboardProps) {
     </div>
   );
 }
+

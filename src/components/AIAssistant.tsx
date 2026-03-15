@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Team, UserProfile, Project, Task } from '../types';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { Team, UserProfile, Project } from '../types';
 import { processTaskCommand } from '../services/geminiService';
 import { Bot, Send, X, Sparkles, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../services/api';
 
 interface AIAssistantProps {
   team: Team;
@@ -69,24 +68,24 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
     switch (action) {
       case 'CREATE_TASK':
         if (!selectedProject) throw new Error("No project selected");
-        await addDoc(collection(db, 'tasks'), {
+        await api.createTask({
           title: taskData.title || 'Untitled Task',
           description: taskData.description || '',
           status: taskData.status || 'todo',
           projectId: selectedProject.id,
+          teamId: team.id,
           assignedTo: profile.uid,
           createdAt: new Date().toISOString()
         });
         break;
       case 'UPDATE_TASK':
         if (!taskData.taskId) throw new Error("Task ID missing");
-        await updateDoc(doc(db, 'tasks', taskData.taskId), {
+        await api.updateTask(taskData.taskId, {
           status: taskData.status,
           ...(taskData.title && { title: taskData.title }),
           ...(taskData.description && { description: taskData.description })
         });
         break;
-      // Implement other actions as needed
     }
   };
 
@@ -98,10 +97,10 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="absolute bottom-20 right-0 w-[400px] h-[500px] bg-white rounded-3xl shadow-2xl border border-zinc-200 flex flex-col overflow-hidden"
+            className="absolute bottom-20 right-0 w-[400px] h-[500px] bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden transition-colors"
           >
             {/* Header */}
-            <div className="p-6 border-b border-zinc-100 bg-zinc-900 text-white flex items-center justify-between">
+            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-900 dark:bg-zinc-950 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center">
                   <Sparkles className="w-4 h-4 text-amber-400" />
@@ -120,17 +119,17 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                  <Bot className="w-12 h-12 text-zinc-200 mb-4" />
-                  <p className="text-sm font-medium text-zinc-900">How can I help you today?</p>
-                  <p className="text-xs text-zinc-400 mt-1">Try "Create a task to design the landing page" or "Move task X to done"</p>
+                  <Bot className="w-12 h-12 text-zinc-200 dark:text-zinc-800 mb-4" />
+                  <p className="text-sm font-medium text-zinc-900 dark:text-white">How can I help you today?</p>
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Try "Create a task to design the landing page" or "Move task X to done"</p>
                 </div>
               )}
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${
                     msg.role === 'user' 
-                      ? 'bg-zinc-100 text-zinc-900 rounded-tr-none' 
-                      : 'bg-zinc-900 text-white rounded-tl-none'
+                      ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-tr-none' 
+                      : 'bg-zinc-900 dark:bg-zinc-950 text-white rounded-tl-none border border-zinc-800'
                   }`}>
                     <div className="flex items-start gap-2">
                       {msg.role === 'bot' && msg.status === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />}
@@ -142,7 +141,7 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
               ))}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-zinc-900 text-white p-4 rounded-2xl rounded-tl-none flex items-center gap-2">
+                  <div className="bg-zinc-900 dark:bg-zinc-950 text-white p-4 rounded-2xl rounded-tl-none flex items-center gap-2 border border-zinc-800">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span className="text-xs font-medium">Processing...</span>
                   </div>
@@ -151,19 +150,19 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
             </div>
 
             {/* Input */}
-            <form onSubmit={handleCommand} className="p-6 border-t border-zinc-100">
+            <form onSubmit={handleCommand} className="p-6 border-t border-zinc-100 dark:border-zinc-800">
               <div className="relative">
                 <input 
                   type="text" 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask me anything..."
-                  className="w-full pl-4 pr-12 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900/10 text-sm"
+                  className="w-full pl-4 pr-12 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-white/10 text-sm dark:text-white transition-all"
                 />
                 <button 
                   type="submit"
                   disabled={loading || !input.trim()}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 disabled:opacity-50"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-100 disabled:opacity-50 transition-all"
                 >
                   <Send className="w-4 h-4" />
                 </button>
@@ -176,7 +175,7 @@ export default function AIAssistant({ team, profile, projects, selectedProject }
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 ${
-          isOpen ? 'bg-zinc-900 text-white rotate-90' : 'bg-white text-zinc-900 hover:scale-110'
+          isOpen ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rotate-90' : 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white hover:scale-110'
         }`}
       >
         {isOpen ? <X className="w-8 h-8" /> : <Bot className="w-8 h-8" />}

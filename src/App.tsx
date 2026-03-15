@@ -4,15 +4,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { UserProfile, Team } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import TeamSetup from './components/TeamSetup';
 import { Loader2 } from 'lucide-react';
+import { api } from './services/api';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -27,19 +27,17 @@ export default function App() {
       if (firebaseUser) {
         setUser(firebaseUser);
         try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as UserProfile;
+          const userData = await api.getUser(firebaseUser.uid);
+          if (userData) {
             setProfile(userData);
             
             if (userData.teamId) {
-              const teamDoc = await getDoc(doc(db, 'teams', userData.teamId));
-              if (teamDoc.exists()) {
-                setTeam({ id: teamDoc.id, ...teamDoc.data() } as Team);
+              const teamData = await api.getTeam(userData.teamId);
+              if (teamData) {
+                setTeam(teamData);
               }
             }
           } else {
-            // New user - profile will be created during team setup or login
             setProfile(null);
           }
         } catch (error) {
@@ -57,23 +55,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Listen for team changes if profile exists
+  // Poll for team changes (since we don't have real-time MongoDB listeners easily set up here)
   useEffect(() => {
     if (profile?.teamId) {
-      const unsubscribe = onSnapshot(doc(db, 'teams', profile.teamId), (doc) => {
-        if (doc.exists()) {
-          setTeam({ id: doc.id, ...doc.data() } as Team);
+      const interval = setInterval(async () => {
+        try {
+          const teamData = await api.getTeam(profile.teamId!);
+          if (teamData) setTeam(teamData);
+        } catch (error) {
+          console.error("Error polling team:", error);
         }
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, `teams/${profile.teamId}`);
-      });
-      return () => unsubscribe();
+      }, 5000);
+      return () => clearInterval(interval);
     }
   }, [profile?.teamId]);
 
   if (!authReady || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
         <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
       </div>
     );

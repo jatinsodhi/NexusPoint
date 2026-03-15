@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Team, UserProfile, Message } from '../types';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import { Send, User, Loader2, MessageSquare, Tag as TagIcon, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { api } from '../services/api';
 
 interface ChatProps {
   team: Team;
@@ -20,25 +19,23 @@ export default function Chat({ team, profile, searchQuery = '' }: ChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'messages'),
-      where('teamId', '==', team.id),
-      orderBy('timestamp', 'asc'),
-      limit(100)
-    );
+    const fetchMessages = async () => {
+      try {
+        const messagesData = await api.getMessages(team.id);
+        setMessages(messagesData);
+        setTimeout(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        }, 100);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)));
-      setTimeout(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-      }, 100);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'messages');
-    });
-
-    return () => unsubscribe();
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
   }, [team.id]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -46,18 +43,24 @@ export default function Chat({ team, profile, searchQuery = '' }: ChatProps) {
     if (!newMessage.trim()) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'messages'), {
+      const msg = await api.createMessage({
         content: newMessage,
         senderId: profile.uid,
         senderName: profile.name,
         teamId: team.id,
         tags: newTags,
-        timestamp: serverTimestamp()
+        timestamp: new Date().toISOString()
       });
+      setMessages(prev => [...prev, msg]);
       setNewMessage('');
       setNewTags([]);
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'messages');
+      console.error("Error sending message:", err);
     } finally {
       setLoading(false);
     }
@@ -134,7 +137,7 @@ export default function Chat({ team, profile, searchQuery = '' }: ChatProps) {
                 )}
               </div>
               <span className="text-[9px] text-zinc-300 dark:text-zinc-600 mt-1">
-                {msg.timestamp ? format(msg.timestamp.toDate(), 'h:mm a') : 'Sending...'}
+                {msg.timestamp ? format(new Date(msg.timestamp), 'h:mm a') : 'Sending...'}
               </span>
             </div>
           );

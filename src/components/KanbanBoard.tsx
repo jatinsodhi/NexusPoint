@@ -1,25 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Project, Task, UserProfile } from '../types';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { 
   Plus, 
-  MoreHorizontal, 
   User, 
   Calendar, 
   Trash2, 
   CheckCircle2, 
   Circle, 
   Clock, 
-  Loader2, 
   AlertTriangle,
   Tag as TagIcon,
   X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Modal from './Modal';
-import { createNotification } from '../services/notificationService';
+import { api } from '../services/api';
 
 interface KanbanBoardProps {
   project: Project | null;
@@ -48,19 +44,18 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
   useEffect(() => {
     if (!project) return;
 
-    const q = query(
-      collection(db, 'tasks'),
-      where('projectId', '==', project.id),
-      orderBy('createdAt', 'desc')
-    );
+    const fetchTasks = async () => {
+      try {
+        const tasksData = await api.getTasks(project.id);
+        setTasks(tasksData);
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tasks');
-    });
-
-    return () => unsubscribe();
+    fetchTasks();
+    const interval = setInterval(fetchTasks, 5000);
+    return () => clearInterval(interval);
   }, [project?.id]);
 
   const onDragEnd = async (result: any) => {
@@ -69,15 +64,18 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
     try {
-      await updateDoc(doc(db, 'tasks', draggableId), {
+      await api.updateTask(draggableId, {
         status: destination.droppableId
       });
       
+      // Optimistic update
+      setTasks(prev => prev.map(t => t.id === draggableId ? { ...t, status: destination.droppableId } : t));
+
       // Notify if status changed to done
       if (destination.droppableId === 'done') {
         const task = tasks.find(t => t.id === draggableId);
         if (task) {
-          await createNotification({
+          await api.createNotification({
             userId: task.assignedTo || profile.uid,
             title: 'Task Completed',
             message: `Task "${task.title}" has been moved to Done.`,
@@ -86,7 +84,7 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
         }
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `tasks/${draggableId}`);
+      console.error("Error updating task status:", err);
     }
   };
 
@@ -94,7 +92,7 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
     if (!newTaskTitle.trim() || !project) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'tasks'), {
+      const newTask = await api.createTask({
         title: newTaskTitle,
         description: newTaskDesc,
         status,
@@ -104,12 +102,13 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
         tags: newTaskTags,
         createdAt: new Date().toISOString()
       });
+      setTasks(prev => [newTask, ...prev]);
       setNewTaskTitle('');
       setNewTaskDesc('');
       setNewTaskTags([]);
       setIsAdding(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'tasks');
+      console.error("Error adding task:", err);
     } finally {
       setLoading(false);
     }
@@ -118,10 +117,11 @@ export default function KanbanBoard({ project, projects, onProjectChange, profil
   const confirmDeleteTask = async () => {
     if (!taskToDelete) return;
     try {
-      await deleteDoc(doc(db, 'tasks', taskToDelete.id));
+      await api.deleteTask(taskToDelete.id);
+      setTasks(prev => prev.filter(t => t.id !== taskToDelete.id));
       setTaskToDelete(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `tasks/${taskToDelete.id}`);
+      console.error("Error deleting task:", err);
     }
   };
 

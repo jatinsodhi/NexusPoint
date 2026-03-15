@@ -1,0 +1,5 @@
+{
+  "name": "CollabHub",
+  "description": "A real-time team collaboration platform featuring Kanban boards, live chat, role-based access control, and an AI-powered task assistant.",
+  "requestFramePermissions": []
+}

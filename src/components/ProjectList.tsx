@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Project, Team, UserProfile } from '../types';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { api } from '../services/api';
 import { Plus, Folder, MoreVertical, Trash2, Edit2, Calendar, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -11,9 +10,10 @@ interface ProjectListProps {
   profile: UserProfile;
   onSelect: (project: Project) => void;
   searchQuery?: string;
+  onRefresh: () => void;
 }
 
-export default function ProjectList({ projects, team, profile, onSelect, searchQuery = '' }: ProjectListProps) {
+export default function ProjectList({ projects, team, profile, onSelect, searchQuery = '', onRefresh }: ProjectListProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -26,7 +26,7 @@ export default function ProjectList({ projects, team, profile, onSelect, searchQ
     if (!name.trim()) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'projects'), {
+      await api.createProject({
         name,
         description,
         teamId: team.id,
@@ -35,8 +35,9 @@ export default function ProjectList({ projects, team, profile, onSelect, searchQ
       setName('');
       setDescription('');
       setIsAdding(false);
+      onRefresh();
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'projects');
+      console.error('Failed to create project:', err);
     } finally {
       setLoading(false);
     }
@@ -45,9 +46,10 @@ export default function ProjectList({ projects, team, profile, onSelect, searchQ
   const handleDeleteProject = async (id: string) => {
     if (!confirm('Are you sure you want to delete this project? All tasks will be lost.')) return;
     try {
-      await deleteDoc(doc(db, 'projects', id));
+      await api.deleteProject(id);
+      onRefresh();
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
+      console.error('Failed to delete project:', err);
     }
   };
 

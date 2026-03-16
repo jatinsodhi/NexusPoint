@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Team, UserProfile } from '../types';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { api } from '../services/api';
 import { User, Shield, Mail, Calendar, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -16,18 +15,22 @@ export default function TeamOverview({ team, profile, searchQuery = '' }: TeamOv
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'users'),
-      where('teamId', '==', team.id)
-    );
+    let isMounted = true;
+    const fetchMembers = async () => {
+      try {
+        const membersData = await api.getTeamMembers(team.id);
+        if (isMounted) setMembers(membersData);
+      } catch (err) {
+        console.error('Failed to fetch team members:', err);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMembers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
-    });
-
-    return () => unsubscribe();
+    fetchMembers();
+    const interval = setInterval(fetchMembers, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [team.id]);
 
   const copyId = () => {

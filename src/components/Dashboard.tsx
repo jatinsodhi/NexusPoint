@@ -35,23 +35,24 @@ export default function Dashboard({ user, profile, team }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const { theme: currentTheme, toggleTheme } = useTheme();
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const projectsData = await api.getProjects(team.id);
-        setProjects(projectsData);
-        if (projectsData.length > 0 && !selectedProject) {
-          setSelectedProject(projectsData[0]);
-        }
-      } catch (error) {
-        console.error("Error fetching projects:", error);
+  const fetchProjects = async () => {
+    if (!team?.id) return;
+    try {
+      const projectsData = await api.getProjects(team.id);
+      setProjects(projectsData);
+      if (projectsData.length > 0 && !selectedProject) {
+        setSelectedProject(projectsData[0]);
       }
-    };
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    }
+  };
 
+  useEffect(() => {
     fetchProjects();
     const interval = setInterval(fetchProjects, 10000);
     return () => clearInterval(interval);
-  }, [team.id]);
+  }, [team?.id]);
 
   const sidebarItems = [
     { id: 'projects', label: 'Projects', icon: LayoutDashboard },
@@ -71,7 +72,7 @@ export default function Dashboard({ user, profile, team }: DashboardProps) {
             </div>
             <div>
               <h1 className="font-bold text-zinc-900 dark:text-white leading-none">CollabHub</h1>
-              <span className="text-xs text-zinc-400">{team.name}</span>
+              <span className="text-xs text-zinc-400">{team?.name || 'Loading...'}</span>
             </div>
           </div>
 
@@ -164,6 +165,7 @@ export default function Dashboard({ user, profile, team }: DashboardProps) {
                 profile={profile} 
                 onSelect={(p) => { setSelectedProject(p); setActiveTab('kanban'); }}
                 searchQuery={searchQuery}
+                onRefresh={fetchProjects}
               />
             )}
             {activeTab === 'kanban' && (
